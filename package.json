@@ -1,0 +1,24 @@
+{
+  "name": "krishi-dhwani",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^3.0.0",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "ffmpeg-static": "^5.3.0",
+    "lru-cache": "^11.5.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

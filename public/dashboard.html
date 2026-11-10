@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krishi Dhwani Live</title>
+<style>
+  :root { --bg:#0f1512; --panel:#17201b; --line:#26332c; --text:#e6efe9; --muted:#8fa69a; --accent:#7bd389; --bad:#ff7a6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
+  .dot.on { background:var(--accent); box-shadow:0 0 8px var(--accent); }
+  .muted { color:var(--muted); }
+  main { padding:16px 20px; display:grid; gap:16px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .kpi .v { font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .kpi .l { color:var(--muted); font-size:12px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:hidden; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
+  .row { display:grid; grid-template-columns:150px 1fr 70px; gap:10px; align-items:center; padding:6px 0; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:0; }
+  .who { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip { display:inline-block; padding:1px 6px; border-radius:6px; background:#22302a; color:var(--accent); font-size:11px; margin-left:4px; }
+  .track { position:relative; height:22px; background:#111a15; border-radius:5px; }
+  .bar { position:absolute; top:3px; height:16px; border-radius:3px; opacity:.92; transition:width .2s linear; }
+  .bar.run { animation:pulse 1s infinite; }
+  .bar.fail { outline:2px solid var(--bad); }
+  @keyframes pulse { 50% { opacity:.5; } }
+  .total { text-align:right; font-variant-numeric:tabular-nums; font-size:12px; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; font-size:12px; color:var(--muted); }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .log { font:12px/1.5 ui-monospace, Consolas, monospace; max-height:220px; overflow:auto; color:var(--muted); }
+  .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns:1fr; } .row { grid-template-columns:90px 1fr 54px; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>Krishi Dhwani · live pipeline</h1>
+  <span class="muted" id="count"></span>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+  <div class="grid2">
+    <section class="panel">
+      <h2>Requests (newest first)</h2>
+      <div id="rows"></div>
+      <div class="legend" id="legend"></div>
+    </section>
+    <section class="panel">
+      <h2>Languages</h2>
+      <div id="langs"></div>
+      <h2 style="margin-top:16px">Event log</h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+</main>
+<script>
+const token = new URLSearchParams(location.search).get('token') || '';
+const COLORS = { download:'#5aa9e6', stt:'#7bd389', weather:'#f2c14e', llm:'#c792ea', send_text:'#4ecdc4', tts:'#ff9f6b', encode:'#e07a5f', upload:'#9aa5b1', send_voice:'#f7768e' };
+const traces = new Map();   // id → { user, kind, lang, events: [] }
+const order = [];
+
+document.getElementById('legend').innerHTML = Object.entries(COLORS).map(([k, c]) => `<span><i style="background:${c}"></i>${k.replace('_', ' ')}</span>`).join('');
+
+function add(ev) {
+  let t = traces.get(ev.traceId);
+  if (!t) { t = { user: ev.user, kind: ev.kind, events: [] }; traces.set(ev.traceId, t); order.unshift(ev.traceId); if (order.length > 20) traces.delete(order.pop()); }
+  t.events.push(ev);
+  if (ev.meta && ev.meta.lang) t.lang = ev.meta.lang;
+}
+
+function render() {
+  const rows = order.map((id) => traces.get(id)).filter(Boolean);
+  const maxT = Math.max(4000, ...rows.map(endOf));
+  document.getElementById('rows').innerHTML = rows.map((t) => {
+    const starts = {};
+    const bars = [];
+    for (const e of t.events) {
+      if (!COLORS[e.stage]) continue;
+      if (e.status === 'start') starts[e.stage] = e.t;
+      if (e.status === 'ok' || e.status === 'fail') {
+        const s = starts[e.stage] ?? e.t - (e.ms || 0); delete starts[e.stage];
+        bars.push(bar(e.stage, s, e.t, maxT, e.status === 'fail' ? 'fail' : '', `${e.stage} ${e.ms}ms`));
+      }
+    }
+    const now = endOf(t);
+    for (const [st, s] of Object.entries(starts)) bars.push(bar(st, s, Math.max(now, s + 80), maxT, 'run', `${st}…`));
+    const done = t.events.find((e) => e.stage === 'done');
+    const err = t.events.find((e) => e.stage === 'error');
+    const total = done ? `${done.t} ms` : err ? '<span style="color:var(--bad)">error</span>' : '…';
+    return `<div class="row"><div class="who">${icon(t.kind)} ${t.user}${t.lang ? `<span class="chip">${t.lang}</span>` : ''}</div><div class="track">${bars.join('')}</div><div class="total">${total}</div></div>`;
+  }).join('') || '<div class="muted">Waiting for the first WhatsApp message…</div>';
+  document.getElementById('count').textContent = `${rows.length} recent requests`;
+}
+const endOf = (t) => Math.max(0, ...t.events.map((e) => e.t));
+const bar = (st, s, e, max, cls, title) => `<div class="bar ${cls}" title="${title}" style="left:${(s / max) * 100}%;width:${Math.max(0.6, ((e - s) / max) * 100)}%;background:${COLORS[st]}"></div>`;
+const icon = (k) => ({ audio:'🎙️', text:'💬', image:'📷', location:'📍' }[k] || '•');
+
+async function loadStats() {
+  try {
+    const s = await (await fetch(`/api/stats?token=${encodeURIComponent(token)}`)).json();
+    const p = (k) => (s.stages[k] ? `${s.stages[k].p50} ms` : '–');
+    const kpis = [['STT p50 (Gnani)', p('stt')], ['LLM p50 (Gemini)', p('llm')], ['TTS p50 (Gnani)', p('tts')], ['Send text p50', p('send_text')], ['Total p50', p('done')], ['Requests', s.requests], ['Errors', s.errors]];
+    document.getElementById('kpis').innerHTML = kpis.map(([l, v]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+    const total = Object.values(s.langs).reduce((a, b) => a + b, 0) || 1;
+    document.getElementById('langs').innerHTML = Object.entries(s.langs).sort((a, b) => b[1] - a[1])
+      .map(([l, n]) => `<div style="margin:4px 0"><span class="chip" style="margin:0 6px 0 0">${l}</span>${n}<div class="track" style="height:6px;margin-top:3px"><div class="bar" style="top:0;height:6px;left:0;width:${(n / total) * 100}%;background:var(--accent)"></div></div></div>`).join('') || '<div class="muted">No data yet</div>';
+  } catch {}
+}
+
+function log(ev) {
+  if (ev.status === 'start') return;
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.textContent = `${new Date().toLocaleTimeString()} ${ev.user} ${ev.stage} ${ev.status}${ev.ms !== undefined ? ` ${ev.ms}ms` : ''}`;
+  el.prepend(line);
+  while (el.childElementCount > 80) el.lastChild.remove();
+}
+
+function connect() {
+  const es = new EventSource(`/events?token=${encodeURIComponent(token)}`);
+  const dot = document.getElementById('dot');
+  es.onopen = () => dot.classList.add('on');
+  es.onerror = () => dot.classList.remove('on');
+  es.addEventListener('snapshot', (m) => { for (const tr of JSON.parse(m.data)) for (const ev of tr.events) add(ev); render(); });
+  es.addEventListener('trace', (m) => { const ev = JSON.parse(m.data); add(ev); log(ev); render(); if (ev.stage === 'done' || ev.stage === 'error') loadStats(); });
+}
+connect(); loadStats(); render();
+setInterval(render, 250);
+</script>
+</body>
+</html>
