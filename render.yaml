@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: krishi-dhwani
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: GRAPH_VERSION
+        value: v23.0
+      - key: GNANI_STT_MODEL
+        value: prisma-v3.0
+      - key: GNANI_TTS_MODEL
+        value: timbre-v2.5
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: WA_PHONE_NUMBER_ID
+        sync: false
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      - key: WA_APP_SECRET
+        sync: false
+      - key: WA_VERIFY_TOKEN
+        sync: false
+      - key: GNANI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DASHBOARD_TOKEN
+        sync: false

@@ -4,7 +4,9 @@
 
 Built for the [Gnani.ai Great Indian AI Internship Challenge](https://www.gnani.ai/internship) on **Gnani Prisma (speech-to-text)** and **Gnani Timbre (text-to-speech)**.
 
-> **Status:** technical specification. This repository holds the product and engineering spec; the implementation follows it task by task.
+> **Status:** working prototype. Voice notes, text and crop photos in all 11 languages run through Gnani Prisma STT → Gemini → Gnani Timbre TTS, with live weather and a live pipeline dashboard. The WhatsApp webhook is implemented and verified with Meta; real message delivery activates once the Meta app is published. Until then, the same pipeline is demoed through a browser chat at `/chat`.
+>
+> **Run it:** `npm install`, copy `.env.example` to `.env` and fill in the keys, then `npm start`. Open `http://localhost:3000/chat?token=<DASHBOARD_TOKEN>` and `/dashboard?token=<DASHBOARD_TOKEN>`. To deploy, use Render (the `render.yaml` blueprint is in the repo). Sections below are the full product spec; items not built yet are listed in the roadmap.
 
 ---
 
