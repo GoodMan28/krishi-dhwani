@@ -87,6 +87,11 @@ async function handleAudio(tr: Trace, m: Extract<InboundMessage, { kind: 'audio'
 }
 
 async function handleText(tr: Trace, m: Extract<InboundMessage, { kind: 'text' }>, user: User) {
+  if (/^\s*delete my data\s*$/i.test(m.body)) {
+    users.delete(m.from);
+    await wa.sendText(m.from, 'Your data has been deleted. ✅');
+    return tr.done({ lang: user.lang });
+  }
   const detected = detectScript(m.body);
   const lang = detected ? updateLanguage(user, detected) : user.lang;
   const weather = await weatherFor(tr, user);

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krishi Dhwani Chat</title>
+<style>
+  :root { --bg:#0b141a; --top:#1f2c34; --in:#1f2c34; --out:#005c4b; --text:#e9edef; --muted:#8696a0; --green:#00a884; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, "Segoe UI", sans-serif; height:100vh; display:flex; justify-content:center; }
+  .app { width:100%; max-width:480px; display:flex; flex-direction:column; height:100vh; border-left:1px solid #222d34; border-right:1px solid #222d34; }
+  header { background:var(--top); padding:12px 16px; display:flex; align-items:center; gap:12px; }
+  .avatar { width:40px; height:40px; border-radius:50%; background:var(--green); display:grid; place-items:center; font-size:22px; }
+  header b { display:block; } header small { color:var(--muted); }
+  #chat { flex:1; overflow-y:auto; padding:16px 12px; display:flex; flex-direction:column; gap:8px;
+          background-image:radial-gradient(#ffffff08 1px, transparent 1px); background-size:18px 18px; }
+  .msg { max-width:85%; padding:8px 10px; border-radius:8px; white-space:pre-wrap; word-wrap:break-word; }
+  .me { align-self:flex-end; background:var(--out); }
+  .bot { align-self:flex-start; background:var(--in); }
+  .msg audio { width:250px; max-width:100%; display:block; }
+  .msg img { max-width:220px; border-radius:6px; display:block; }
+  .meta { font-size:11px; color:var(--muted); margin-top:4px; }
+  .chip { background:#ffffff14; border-radius:4px; padding:0 4px; margin-left:4px; }
+  .typing { color:var(--muted); font-style:italic; }
+  footer { background:var(--top); padding:8px; display:flex; gap:8px; align-items:center; }
+  footer input[type=text] { flex:1; background:#2a3942; color:var(--text); border:0; border-radius:20px; padding:10px 14px; font:inherit; outline:none; }
+  .btn { width:44px; height:44px; border-radius:50%; border:0; background:var(--green); color:#fff; font-size:20px; cursor:pointer; flex:none; display:grid; place-items:center; }
+  .btn.rec { background:#e53935; animation:p 1s infinite; }
+  .btn.ghost { background:#2a3942; }
+  @keyframes p { 50% { transform:scale(1.08); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><div class="avatar">🌾</div><div><b>Krishi Dhwani</b><small id="status">online · Gnani Prisma + Timbre</small></div></header>
+  <div id="chat"></div>
+  <footer>
+    <button class="btn ghost" id="loc" title="Share location">📍</button>
+    <label class="btn ghost" title="Send crop photo">📷<input type="file" id="photo" accept="image/*" hidden></label>
+    <input type="text" id="txt" placeholder="Type a message">
+    <button class="btn" id="mic" title="Hold to talk">🎙️</button>
+  </footer>
+</div>
+<script>
+const token = new URLSearchParams(location.search).get('token') || '';
+const sid = Math.random().toString(36).slice(2);
+const chat = document.getElementById('chat');
+const api = (kind, extra = '') => `/demo/ask?token=${encodeURIComponent(token)}&sid=${sid}&kind=${kind}${extra}`;
+
+function bubble(cls, html) {
+  const d = document.createElement('div'); d.className = `msg ${cls}`; d.innerHTML = html; chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
+}
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
+const time = () => new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+
+async function send(kind, body, type, extra) {
+  const t0 = performance.now();
+  const typing = bubble('bot typing', 'typing…');
+  document.getElementById('status').textContent = 'typing…';
+  try {
+    const r = await fetch(api(kind, extra), { method:'POST', body, headers:{ 'Content-Type': type } });
+    const j = await r.json();
+    typing.remove();
+    if (!r.ok) throw new Error(j.error || r.status);
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    bubble('bot', `${esc(j.summary)}<div class="meta">${time()}<span class="chip">${j.lang}</span></div>`);
+    const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(j.audio), (c) => c.charCodeAt(0))], { type:'audio/ogg' }));
+    const v = bubble('bot', `<audio controls src="${url}"></audio><div class="meta">${time()} · reply in ${secs}s</div>`);
+    v.querySelector('audio').play().catch(() => {});
+    return j;
+  } catch (e) {
+    typing.remove(); bubble('bot', `⚠️ ${esc(String(e.message || e))}`);
+  } finally { document.getElementById('status').textContent = 'online · Gnani Prisma + Timbre'; }
+}
+
+// Voice: hold (or click to start/stop) the mic button
+let rec, chunks = [];
+const mic = document.getElementById('mic');
+async function startRec() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+  rec = new MediaRecorder(stream); chunks = [];
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  rec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    const blob = new Blob(chunks, { type: rec.mimeType });
+    const b = bubble('me', `<audio controls src="${URL.createObjectURL(blob)}"></audio><div class="meta">${time()}</div>`);
+    const j = await send('audio', blob, rec.mimeType);
+    if (j && j.transcript) b.querySelector('.meta').innerHTML += ` · “${esc(j.transcript)}”`;
+  };
+  rec.start(); mic.classList.add('rec'); mic.textContent = '⏹';
+}
+function stopRec() { if (rec && rec.state === 'recording') { rec.stop(); mic.classList.remove('rec'); mic.textContent = '🎙️'; } }
+mic.onclick = () => (rec && rec.state === 'recording' ? stopRec() : startRec());
+
+// Text
+document.getElementById('txt').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.value.trim()) return;
+  const text = e.target.value.trim(); e.target.value = '';
+  bubble('me', `${esc(text)}<div class="meta">${time()}</div>`);
+  send('text', text, 'text/plain');
+});
+
+// Photo
+document.getElementById('photo').onchange = (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  bubble('me', `<img src="${URL.createObjectURL(f)}"><div class="meta">${time()}</div>`);
+  send('image', f, f.type || 'image/jpeg', '');
+  e.target.value = '';
+};
+
+// Location
+document.getElementById('loc').onclick = () => navigator.geolocation.getCurrentPosition(async (p) => {
+  await fetch(`/demo/location?token=${encodeURIComponent(token)}&sid=${sid}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ lat:p.coords.latitude, lon:p.coords.longitude }) });
+  bubble('me', `📍 Location shared<div class="meta">${time()}</div>`);
+  bubble('bot', `✅ Location saved. Advice will now include local weather.<div class="meta">${time()}</div>`);
+}, () => bubble('bot', '⚠️ Location permission denied'));
+
+bubble('bot', `🌾 Namaste! Ask me anything about your crops — speak in your own language.<div class="meta">${time()}</div>`);
+</script>
+</body>
+</html>
