@@ -7,7 +7,7 @@ import type { InboundMessage } from './webhook.js';
 import * as wa from './clients/whatsapp.js';
 import * as gnani from './clients/gnani.js';
 import { ask, type BrainAnswer, type BrainContext, type Turn } from './clients/gemini.js';
-import { weatherLine, geocode } from './clients/weather.js';
+import { weatherLine, geocode, reverseGeocode } from './clients/weather.js';
 import { wavToOggOpus } from './audio.js';
 
 // ---- In-memory farmer profiles (crunch mode; MongoDB is the next step in the plan) ----
@@ -53,9 +53,9 @@ async function handle(m: InboundMessage) {
       case 'text': return await handleText(tr, m, user);
       case 'image': return await handleImage(tr, m, user);
       case 'location': {
-        user.location = { lat: m.lat, lon: m.lon, label: m.label };
-        const w = await tr.stage('weather', () => weatherLine(m.lat, m.lon));
-        await wa.sendText(m.from, MSG.locationSaved[user.lang] + (w ? `\n🌦️ ${w}` : ''));
+        const [place, w] = await Promise.all([reverseGeocode(m.lat, m.lon), tr.stage('weather', () => weatherLine(m.lat, m.lon))]);
+        user.location = { lat: m.lat, lon: m.lon, label: place?.label ?? m.label };
+        await wa.sendText(m.from, MSG.locationSaved[user.lang] + (user.location.label ? `\n📍 ${user.location.label}` : '') + (w ? `\n🌦️ ${w}` : ''));
         return tr.done({ lang: user.lang });
       }
       default:

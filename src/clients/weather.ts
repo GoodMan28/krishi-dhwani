@@ -30,6 +30,42 @@ export async function weatherLine(lat: number, lon: number): Promise<string | nu
   }
 }
 
+const revCache = new LRUCache<string, { place: string; district: string; state: string; label: string }>({ max: 2000, ttl: 7 * 24 * 3600_000 });
+
+/** Coordinates → "Locality, District, State" (BigDataCloud free client endpoint, Nominatim fallback). */
+export async function reverseGeocode(lat: number, lon: number) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  const hit = revCache.get(key);
+  if (hit) return hit;
+  try {
+    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`, { signal: AbortSignal.timeout(2500) });
+    const j = await r.json() as { locality?: string; city?: string; principalSubdivision?: string; localityInfo?: { administrative?: { name: string; adminLevel: number }[] } };
+    const admin = j.localityInfo?.administrative ?? [];
+    const district = admin.find((a) => a.adminLevel === 5)?.name ?? admin.find((a) => a.adminLevel === 6)?.name ?? '';
+    const state = j.principalSubdivision ?? '';
+    const place = j.city || j.locality || '';
+    if (state) {
+      const v = { place, district, state, label: [place, district !== place ? district : '', state].filter(Boolean).join(', ') };
+      revCache.set(key, v);
+      return v;
+    }
+  } catch { /* fall through */ }
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`, { headers: { 'User-Agent': 'krishi-dhwani-hackathon/0.1' }, signal: AbortSignal.timeout(3000) });
+    const j = await r.json() as { address?: { city?: string; town?: string; village?: string; county?: string; state_district?: string; state?: string } };
+    const a = j.address ?? {};
+    const place = a.city ?? a.town ?? a.village ?? '';
+    const district = a.state_district ?? a.county ?? '';
+    const state = a.state ?? '';
+    if (!state) return null;
+    const v = { place, district, state, label: [place, district, state].filter(Boolean).join(', ') };
+    revCache.set(key, v);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
 export async function geocode(place: string) {
   const k = place.trim().toLowerCase();
   if (!k) return null;
